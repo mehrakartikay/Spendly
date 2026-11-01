@@ -1,10 +1,23 @@
+import os
 import sqlite3
 
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash
 
-from database.db import create_user, get_db, get_user_by_email, init_db, seed_db
+from database.db import (
+    create_user,
+    get_db,
+    get_user_by_email,
+    get_user_by_id,
+    init_db,
+    seed_db,
+)
+
+# Development-only fallback. Set the SECRET_KEY environment variable in any real deployment.
+DEV_SECRET_KEY = "dev-only-insecure-secret-key-change-me"
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", DEV_SECRET_KEY)
 
 with app.app_context():
     init_db()
@@ -67,9 +80,39 @@ def register():
     return redirect(url_for("login"))
 
 
-@app.route("/login")
+INVALID_CREDENTIALS_ERROR = "Invalid email or password."
+MISSING_CREDENTIALS_ERROR = "Email and password are required."
+
+
+def _validate_login(email, password):
+    if not email or not password:
+        return MISSING_CREDENTIALS_ERROR
+    return None
+
+
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    return render_template("login.html")
+    if session.get("user_id"):
+        return redirect(url_for("landing"))
+
+    if request.method == "GET":
+        return render_template("login.html")
+
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+
+    error = _validate_login(email, password)
+    if error is None:
+        user = get_user_by_email(email)
+        if user is None or not check_password_hash(user["password_hash"], password):
+            error = INVALID_CREDENTIALS_ERROR
+
+    if error is not None:
+        return render_template("login.html", error=error, email=email)
+
+    session.clear()
+    session["user_id"] = user["id"]
+    return redirect(url_for("landing"))
 
 
 @app.route("/terms")
@@ -88,7 +131,9 @@ def privacy():
 
 @app.route("/logout")
 def logout():
-    return "Logout — coming in Step 3"
+    # Known gap: logout is a GET request, so it is open to CSRF. Out of scope for Step 3.
+    session.clear()
+    return redirect(url_for("landing"))
 
 
 @app.route("/profile")
