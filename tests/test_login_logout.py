@@ -145,6 +145,22 @@ def test_login_page_redirects_when_signed_in(client):
     assert r.headers["Location"].endswith("/")
 
 
+@pytest.mark.parametrize("method", ["get", "post"])
+def test_register_redirects_when_signed_in(client, method):
+    _login(client, DEMO_EMAIL, DEMO_PASSWORD)
+    if method == "get":
+        r = client.get("/register", follow_redirects=False)
+    else:
+        r = client.post(
+            "/register",
+            data={"name": "Eve", "email": "eve@spendly.com", "password": "Pass@123"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 302
+    assert r.headers["Location"].endswith("/")
+    assert db.get_user_by_email("eve@spendly.com") is None
+
+
 def test_login_post_redirects_when_signed_in(client):
     _login(client, DEMO_EMAIL, DEMO_PASSWORD)
     r = _login(client, DEMO_EMAIL, DEMO_PASSWORD)
